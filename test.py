@@ -117,20 +117,30 @@ class TestSbisect(unittest.TestCase):
         y=G@x
         self.assertEqual(list(y[b0]),list(np.zeros(len(b0))))
 
+    def test_nested_dissection(self):
+        seed=2398743
+        rng=np.random.default_rng(seed)
+        ndiags=5
+        m=256
+        offs = [-32,-1,0,1,32]
+        A=sp.diags([rng.uniform(-1,1,m) for _ in range(ndiags)],offs,shape=(m,m)) 
+        G=sbisect.graph_laplacian(A)
+        nd = sbisect.ndisect(G,list(range(0,m)),maxm=32,tol=1e-6,maxiter=200,verbosity=0)
+        #Test that `nd forms a partition
 
+        stack=[nd]
+        ids=[]
+        while stack:
+            p=stack.pop()
+            if isinstance(p,list):
+                ids=ids+p
+            else:
+                b0,s,b1=p
+                ids=ids+s
+                stack.append(b0)
+                stack.append(b1)
 
-
-
-
-
-
-
-
-
-
-
-
-
+        self.assertEqual(sorted(ids),list(range(0,m)))
 
 
 
