@@ -56,15 +56,17 @@ def fiedler(G,tol=1e-6,maxiter=20,seed=42,verbosity=0):
 
 
 #Uses fiedler vector to compute a 3-way partition [b0,s,b1] where s is an exact separator
-#between b0 and b1
-def split(G,tol=1e-6,maxiter=20,seed=42,verbosity=0):
+#between b0 and b1. if `maxsep` is specified then the separator gets sparsified according
+#to fiedler vector values
+def split(G,tol=1e-6,maxiter=20,seed=42,verbosity=0,maxsep=None):
     G=sp.csr_matrix(G)
     m,n=G.shape
     assert(m==n)
     t,f=fiedler(G,tol=tol,maxiter=maxiter,seed=seed,verbosity=verbosity)
     f=f/np.linalg.norm(f,ord=np.inf)
-    b0=set(filter(lambda i : f[i]<0.0,range(0,m)))
-    b1=set(filter(lambda i : f[i]>=0.0,range(0,m)))
+    p=np.argsort(f)
+    b0=set(p[0:m//2])
+    b1=set(p[m//2:m])
     s0=set()
     s1=set()
     for i in b0:
@@ -88,6 +90,32 @@ def split(G,tol=1e-6,maxiter=20,seed=42,verbosity=0):
     b0 = b0.difference(s1)
     s = s0.union(s1)
 
+    #Now sparsify the separator if so indicated
+    if (maxsep is not None) and len(s)>maxsep:
+        #Sort by fiedler vector values
+        ls=sorted(list(s),key=lambda i : f[i])
+        #Heuristic: split ls in half: ls=[ls0,ls1]
+        #Then indices in ls0 have a higher probability to be
+        #in b0 than b1, vice-versa for ls1.
+        #To keep the partition balanced I iteratively remove
+        #left-most values from ls0 and add to b0
+        #and right-most values from ls1 and add to b1
+        left=True
+        i=0
+        while len(s)>maxsep:
+            if left:
+                b0.add(ls[i])
+                s.remove(ls[i])
+                i=i+1
+                left=False
+            else:
+                b1.add(ls[-i-1])
+                s.remove(ls[-i-1])
+                left=True
+
+
+
+
 
     return (list(b0),list(s),list(b1))
 
@@ -95,15 +123,14 @@ def split(G,tol=1e-6,maxiter=20,seed=42,verbosity=0):
 
 
 
-
-def ndisect(G,ids,maxm=32,tol=1e-6,maxiter=20,seed=42,verbosity=0):
+def ndisect(G,ids,maxm=32,tol=1e-6,maxiter=20,seed=42,verbosity=0,maxsep=None):
     G=sp.lil_matrix(G)
     m,n=G.shape
     assert(m==n)
     if m<=maxm:
         return ids
     else:
-        b0,s,b1 = split(G,tol=tol,maxiter=maxiter,seed=seed,verbosity=verbosity)
+        b0,s,b1 = split(G,tol=tol,maxiter=maxiter,seed=seed,verbosity=verbosity,maxsep=maxsep)
         G0=graph_laplacian(G[np.ix_(b0,b0)])
         G1=graph_laplacian(G[np.ix_(b1,b1)])
 
@@ -112,6 +139,7 @@ def ndisect(G,ids,maxm=32,tol=1e-6,maxiter=20,seed=42,verbosity=0):
                 [ids[i] for i in s],
                 ndisect(G1,[ids[i] for i in b1],maxm=maxm,tol=tol,maxiter=maxiter,seed=seed,verbosity=verbosity)
                 )
+
 
 
 def level_flatten(nd):
