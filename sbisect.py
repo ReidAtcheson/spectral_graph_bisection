@@ -6,6 +6,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from collections import deque
+import pdb
 
 
 #Computes graph laplacian for sparsity structure of input
@@ -113,84 +114,51 @@ def ndisect(G,ids,maxm=32,tol=1e-6,maxiter=20,seed=42,verbosity=0):
                 )
 
 
+def level_flatten(nd):
+    stack=[]
+    parents=[]
+    offs=[]
+    parent=-1
+    queue=deque([(nd,parent)])
 
-
-
-
-#Store nested dissection decomposition of matrix
-class NDMatrix:
-
-
-    self.p=None
-    self.A=None
-    self.B=None
-    self.C=None
-
-    self.luA=None
-
-
-    self.parent=None
-    self.left=None
-    self.right=None
-    def __init__(self,A,nd,parent):
-        m,n=A.shape
-        assert(m==n)
-        if isinstance(nd,list):
-            self.p=nd
-            self.parent=parent
-            self.A=A[np.ix_(nd,nd)]
-            if parent is not None:
-                self.s=parent.p
-                self.B=A[np.ix_(nd,s)].toarray()
-                self.C=A[np.ix_(s,nd)].toarray()
+    while queue:
+        n,p=queue.popleft()
+        if isinstance(n,list):
+            stack.append(n)
+            parents.append(p)
         else:
-            b0,s,b1=nd
-            self.left=NDMatrix(A,b0,self)
-            self.right=NDMatrix(A,b1,self)
-            self.p=s
-            self.A=A[np.ix_(p,p)].toarray()
-            if parent is not None:
-                p=s
-                self.parent=parent
-                s=parent.p
-                self.B=A[np.ix_(p,s)].toarray()
-                self.C=A[np.ix_(s,p)].toarray()
+            left,sep,right=n
+            stack.append(sep)
+            parents.append(p)
+            queue.append((left,len(stack)-1))
+            queue.append((right,len(stack)-1))
 
-    def factorize(self):
-        s = deque([self])
+    off=0
+    offs.append(off)
+    for n in stack:
+        off=off+len(n)
+        offs.append(off)
+    return stack,parents,offs
 
 
-        while s:
-            n=s.popleft()
-            if (n.left is not None) and (n.right is not None):
-                s.append(n.left)
-                s.append(n.right)
-            else:
-                parent=n.parent
-                first=True
-                while parent != None:
-                    #Factorize leaf: These are sparse so use sparse factorization
-                    if first:
-                        n.luA = spla.slpu(n.A)
-                        first=False
-                    #Factorize schur complement: These are dense
-                    else:
-                        n.luA = la.lu_factor(A)
-                        #Solve with
-                        #la.lu_solve(n.luA,b)
-                    #Eliminate offdiagonal blocks
-                    n.B = n.luA.solve(n.B)
-                    #Form Partial Schur complement
-                    parent.A = parent.A - n.C @ n.B                    
-                    parent=n.parent
-        
-        
-
-
-
-
-
-
+def assemble(A,ids,parents,offs):
+    m,n=A.shape
+    assert(m==n)
+    B = sp.lil_matrix((m,n))
+    for n,p,j in zip(reversed(ids),reversed(parents),reversed(range(0,len(ids)))):
+        start=offs[j]
+        stop=offs[j+1]
+        rn=range(start,stop)
+        #First assemble local block
+        B[np.ix_(rn,rn)]=A[np.ix_(n,n)]
+        #Now assemble off-diagonal blocks
+        while not p==-1:
+            rp=range(offs[p],offs[p+1])
+            mp=ids[p]
+            B[np.ix_(rn,rp)]=A[np.ix_(n,mp)]
+            B[np.ix_(rp,rn)]=A[np.ix_(mp,n)]
+            p=parents[p]
+    return B
 
 
 

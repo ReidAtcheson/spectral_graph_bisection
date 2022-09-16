@@ -3,6 +3,10 @@ import sbisect
 import numpy as np
 import scipy.linalg as la
 import scipy.sparse as sp
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import pdb
 
 
 class TestSbisect(unittest.TestCase):
@@ -59,12 +63,6 @@ class TestSbisect(unittest.TestCase):
 
         self.assertLess( sp.linalg.norm(G-G.T), 1e-14 )
 
-
-
-
-
-
-
     #Compare "matrix-free" fiedler vector calculation
     #to dense eigenvalue calculation
     def test_fiedler_vector(self):
@@ -117,7 +115,7 @@ class TestSbisect(unittest.TestCase):
         y=G@x
         self.assertEqual(list(y[b0]),list(np.zeros(len(b0))))
 
-    def test_nested_dissection(self):
+    def test_nested_dissection_partition(self):
         seed=2398743
         rng=np.random.default_rng(seed)
         ndiags=5
@@ -141,6 +139,63 @@ class TestSbisect(unittest.TestCase):
                 stack.append(b1)
 
         self.assertEqual(sorted(ids),list(range(0,m)))
+
+    def test_nested_dissection_nonempty_separator(self):
+        seed=2398743
+        rng=np.random.default_rng(seed)
+        ndiags=5
+        m=256
+        offs = [-32,-1,0,1,32]
+        A=sp.diags([rng.uniform(-1,1,m) for _ in range(ndiags)],offs,shape=(m,m)) 
+        G=sbisect.graph_laplacian(A)
+        nd = sbisect.ndisect(G,list(range(0,m)),maxm=32,tol=1e-6,maxiter=200,verbosity=0)
+        #Test that `nd forms a partition
+
+        stack=[nd]
+        ids=[]
+        while stack:
+            p=stack.pop()
+            if isinstance(p,list):
+                ids=ids+p
+            else:
+                b0,s,b1=p
+                self.assertGreater(len(s),0)
+
+
+
+    def test_nested_dissection_assemble(self):
+        seed=2398743
+        rng=np.random.default_rng(seed)
+        ndiags=5
+        m=256
+        offs = [-32,-1,0,1,32]
+        A=sp.diags([rng.uniform(-1,1,m) for _ in range(ndiags)],offs,shape=(m,m))
+        A=A+sp.diags([8*np.ones(m)],[0],shape=(m,m))
+        A=sp.lil_matrix(A)
+        G=sbisect.graph_laplacian(A)
+        nd = sbisect.ndisect(G,list(range(0,m)),maxm=32,tol=1e-6,maxiter=200,verbosity=0)
+        ids,parents,offs=sbisect.level_flatten(nd)
+        Ap=sbisect.assemble(A,ids,parents,offs)
+        #Ap should be the same as if we simply created the permutation p directly
+        #and formed A[p,p]
+        p=[]
+        for n in ids:
+            p=p+n
+        Aph=A[np.ix_(p,p)]
+
+        #plt.spy(Ap)
+        #plt.savefig("Ap.svg")
+        #plt.close()
+        #plt.spy(Aph)
+        #plt.savefig("Aph.svg")
+        #plt.close()
+
+        self.assertEqual(sp.linalg.norm( (Ap-Aph) ),0.0)
+
+
+
+
+
 
 
 
